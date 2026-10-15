@@ -24,10 +24,47 @@ function Map:update(value)
     nodes[node.name] = old
   end
 end
+-- A map-only body: no planet/space-location/route is added to vanilla.
+-- Its name must be unique among both data-stage locations and map-only nodes.
+function Map:define(value)
+  local custom=config().custom_nodes
+  for _,node in ipairs(entries(value)) do
+    local name=node.name
+    assert(type(name)=="string" and name:match("^[%w_%-]+$") and
+      name~="star" and name~="space-location-unknown",
+      "define requires a unique ASCII map-only name")
+    assert(not custom[name] and not (data.raw.planet or {})[name] and
+      not (data.raw["space-location"] or {})[name], "map node already exists: "..name)
+    assert(type(node.radius)=="number" and node.radius>0 and node.radius<1000000,
+      "map-only node requires positive radius")
+    assert(node.parent==nil or type(node.parent)=="string", "parent must be a node name")
+    local copy=table.deepcopy(node)
+    copy.name=nil
+    custom[name]=copy
+  end
+end
+
+function Map:remove_custom(name)
+  assert(type(name)=="string" and config().custom_nodes[name],"unknown custom node")
+  config().custom_nodes[name]=nil
+  config().nodes[name]=nil
+end
+
+function Map:hide(name)
+  assert(type(name)=="string" and name~="star", "cannot hide the sun")
+  self:update{name=name,hidden=true}
+end
+
+function Map:show(name)
+  assert(type(name)=="string", "node name required")
+  self:update{name=name,hidden=false}
+end
+
 function Map:configure(value)
   local cfg = config()
   for k, v in pairs(value) do
-    assert(k ~= "nodes" and k ~= "connections", "use extend/update for nodes; connections are unsupported")
+    assert(k ~= "nodes" and k ~= "custom_nodes" and k ~= "connections",
+      "use extend/update/define for nodes; connections are unsupported")
     cfg[k] = table.deepcopy(v)
   end
 end

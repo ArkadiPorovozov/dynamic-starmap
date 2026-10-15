@@ -38,6 +38,7 @@ script.on_event(defines.events.on_research_finished, function(event)
   Cards.refresh_force(event.research.force)
 end)
 script.on_event(defines.events.on_tick, function(event)
+  Gui.snap_pending()
   Map.tick(event)
   Gui.tick(event)
 end)
@@ -131,39 +132,4 @@ commands.add_command("dsm-hover-debug", {"dsm.hover-debug-help"}, function(comma
   log(text)
 end)
 
-remote.add_interface("dynamic_starmap", {
-  get_catalog = function() return State.copy(State.catalog()) end,
-  get_node = function(name) return State.copy(State.catalog().nodes[name]) end,
-  get_routes = function() return State.copy(State.catalog().routes) end,
-  get_platform_marks = function()
-    local result={}
-    for key,mark in pairs(State.get().platform_marks or {}) do
-      if mark.entity and mark.entity.valid then
-        local p=mark.entity.position
-        result[key]={force=mark.force,index=mark.index,moving=mark.moving,
-          position={x=p.x,y=p.y}}
-      end
-    end
-    return result
-  end,
-  get_surface = function() return game.surfaces[Surface.NAME] end,
-  get_entity = function(name) return State.get().entities[name] end,
-  get_state = function()
-    local st = State.get()
-    return {paused=st.paused, time_scale=st.time_scale or State.catalog().time_scale}
-  end,
-  open = function(index) local p=game.get_player(index); return p and Gui.open(p) or false end,
-  close = function(index) local p=game.get_player(index); return p and Gui.close(p) or false end,
-  focus = function(index,name) local p=game.get_player(index); return p and Gui.focus(p,name) or false end,
-  rebuild = function()
-    if State.get().pending_rebuild_surface then return false end
-    return Map.rebuild()
-  end,
-  restore = function() local ok=restore(); return ok end,
-  regenerate = function() local ok = regenerate(); return ok end,
-  set_paused = function(value) State.get().paused = not not value end,
-  set_time_scale = function(value)
-    assert(type(value)=="number" and value>=0 and value<=100, "time_scale must be between 0 and 100")
-    State.get().time_scale = value
-  end
-})
+remote.add_interface("dynamic_starmap",require("scripts.public"))

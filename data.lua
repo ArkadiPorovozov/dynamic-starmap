@@ -19,7 +19,8 @@ data:extend({
       moon_angular_speed = 0.00022,
       show_platforms = true,
       static_planet_entities = false, -- opt-in: no LuaRendering, but no sun-facing spin
-      nodes = {}                -- [space-location name] = {parent, radius, phase, period, spin, size, icon, icon_size, hidden}
+      nodes = {},               -- overrides of existing space locations
+      custom_nodes = {}         -- map-only nodes; never add vanilla planets/routes
     }
   },
   {

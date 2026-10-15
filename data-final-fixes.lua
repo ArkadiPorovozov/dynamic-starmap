@@ -12,6 +12,26 @@ for _, kind in ipairs({"space-location", "planet"}) do
   end
 end
 
+-- Map-only bodies declared through api.lua:define. They are catalogued and
+-- drawn here, but never inserted into Space Age or PlanetsLib prototypes.
+for name,spec in pairs(cfg.custom_nodes or {}) do
+  assert(not all[name],"map-only node conflicts with planet/space-location: "..name)
+  local p={type="dsm-custom",name=name,distance=spec.radius,
+    orientation=spec.phase or 0,starmap_icon=spec.icon,
+    starmap_icon_size=spec.icon_size or 128,
+    localised_name=spec.localised_name or name,
+    localised_description=spec.description,
+    magnitude=spec.magnitude,solar_power_in_space=spec.solar_power_in_space,
+    surface_properties=spec.properties}
+  all[name]=p
+  -- Later Map:update/extend calls override the initial custom definition.
+  -- Radius stays exact, and the base Space Age prototypes are never changed.
+  local overrides=cfg.nodes[name] or {}
+  local definition=table.deepcopy(spec)
+  for key,value in pairs(overrides) do definition[key]=table.deepcopy(value) end
+  cfg.nodes[name]=definition
+end
+
 -- Space Age draws its central sun from utility-sprites; it does NOT have to
 -- declare a "star" space-location. Add a map-only centre without touching
 -- data.raw["space-location"] or the vanilla flight graph.
@@ -346,6 +366,10 @@ for name, proto in pairs(all) do
       source_radius = native_radius * (cfg.scale or 1),
       phase = change.phase or (proto.orbit and proto.orbit.orientation) or proto.orientation or 0,
       period = change.period, spin = change.spin or 2400,
+      -- +1: clockwise from north; -1: counterclockwise. Self-spin is
+      -- independent and applies only when tidal_lock=false.
+      orbit_direction = change.orbit_direction or 1,
+      spin_direction = change.spin_direction or 1,
       tidal_lock = not static_picture and change.tidal_lock ~= false,
       size = size, static_picture = static_picture,
       -- This surface shows every orbit, regardless of draw_orbit on the
@@ -364,6 +388,10 @@ for name, proto in pairs(all) do
       color = cfg.orbit_color or change.color or (is_moon and
         {r=0.46,g=0.56,b=0.68,a=0.9} or {r=0.32,g=0.38,b=0.48,a=0.88})
     }
+    assert(nodes[name].orbit_direction==1 or nodes[name].orbit_direction==-1,
+      "orbit_direction must be 1 (clockwise) or -1 (counterclockwise): "..name)
+    assert(nodes[name].spin_direction==1 or nodes[name].spin_direction==-1,
+      "spin_direction must be 1 or -1: "..name)
     for _,field in ipairs(proto.custom_tooltip_fields or {}) do
       if field.show_in_tooltip~=false and meaningful(field.name) and meaningful(field.value) then
         nodes[name].tooltip_fields[#nodes[name].tooltip_fields+1]=table.deepcopy(field)

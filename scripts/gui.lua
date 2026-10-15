@@ -428,11 +428,23 @@ function M.close(player)
   end
   if old.type == defines.controllers.character and old.character and old.character.valid then
     if player.controller_type ~= defines.controllers.character or player.character ~= old.character then
-      player.set_controller{type=defines.controllers.character, character=old.character}
+      -- Factorio requires the player and the character to belong to the
+      -- SAME surface before set_controller{type=character}. The remote map
+      -- camera is on dsm-space, but the body is usually still on Nauvis.
+      local home=old.character.surface
+      if player.surface~=home then
+        player.set_controller{type=defines.controllers.remote,
+          surface=home,position=old.character.position}
+      end
+      player.set_controller{type=defines.controllers.character,character=old.character}
     end
   elseif old.type == defines.controllers.remote and game.surfaces[old.surface] then
     player.set_controller{type=defines.controllers.remote, surface=old.surface, position=old.position}
   elseif old.type == defines.controllers.god then
+    local home=game.surfaces[old.surface]
+    if home and player.surface~=home then
+      player.set_controller{type=defines.controllers.remote,surface=home,position=old.position}
+    end
     player.set_controller{type=defines.controllers.god}
   else
     -- The original character may have died while the map was open.
@@ -455,7 +467,13 @@ function M.open(player)
     type=player.controller_type, character=player.character,
     surface=player.surface.name, position=State.copy(player.position)
   }
-  player.set_controller{type=defines.controllers.remote, surface=s, position={0,0}}
+  local sun=(st.entities.star and st.entities.star.valid and
+    st.entities.star.position) or (st.positions and st.positions.star) or {x=0,y=0}
+  local centre={x=sun.x,y=sun.y}
+  player.set_controller{type=defines.controllers.remote,surface=s,position=centre}
+  -- Remote View can restore its previous camera position AFTER set_controller
+  -- in the same tick. Reassert the sun as centre once on the next tick.
+  st.viewers[player.index].initial_center=centre
   st.camera_views=st.camera_views or {}
   st.camera_views[player.index]={}
   Surface.load_camera(player,s,st.camera_views[player.index],true)
@@ -463,6 +481,18 @@ function M.open(player)
     if ent.valid then Surface.chart_near(player, s, ent.position, 32) end
   end
   destroy_gui(player) -- remove legacy sidebar on saves made before this version
+  return true
+end
+
+function M.focus_position(player,point)
+  if not M.open(player) then return false end
+  local st=State.get()
+  st.viewers[player.index].initial_center={x=point.x,y=point.y}
+  local s=game.surfaces[Surface.NAME]
+  player.set_controller{type=defines.controllers.remote,surface=s,position=point}
+  st.camera_views=st.camera_views or {}
+  st.camera_views[player.index]=st.camera_views[player.index] or {}
+  Surface.load_camera(player,s,st.camera_views[player.index],true)
   return true
 end
 
@@ -474,6 +504,7 @@ function M.focus(player, name)
   local ent = st.entities[name]
   if not (ent and ent.valid) then return false end
   local preview=player.gui.screen[PLATFORM];if preview then preview.destroy() end
+  st.viewers[player.index].initial_center={x=ent.position.x,y=ent.position.y}
   player.set_controller{type=defines.controllers.remote, surface=ent.surface, position=ent.position}
   st.camera_views=st.camera_views or {}
   st.camera_views[player.index]=st.camera_views[player.index] or {}
@@ -496,6 +527,7 @@ function M.focus_platform(player,key)
   local details=player.gui.screen[DETAILS];if details then details.destroy() end
   st.viewers[player.index].hover_name=nil
   st.viewers[player.index].probe_name=nil
+  st.viewers[player.index].initial_center={x=point.x,y=point.y}
   player.set_controller{type=defines.controllers.remote,
     surface=mark.entity.surface,position=point}
   st.camera_views=st.camera_views or {}
@@ -558,6 +590,28 @@ function M.on_selected(event)
     if view then view.hover_tick=view.hover_tick or game.tick end
     local detail = player.gui.screen[DETAILS]
     if detail then detail.destroy() end
+  end
+end
+
+-- Reconcile the camera BEFORE camera chunk requests in Map.tick. Remote View
+-- may apply a previous offset after the same-tick set_controller call.
+function M.snap_pending()
+  local st=State.get()
+  for index,view in pairs(st.viewers) do
+    local player=game.get_player(index)
+    if player and player.valid and view.initial_center then
+      local centre=view.initial_center
+      view.initial_center=nil
+      local surface=game.surfaces[Surface.NAME]
+      if surface and player.controller_type==defines.controllers.remote and
+         player.surface==surface then
+        player.set_controller{type=defines.controllers.remote,
+          surface=surface,position=centre}
+        st.camera_views=st.camera_views or {}
+        st.camera_views[index]=st.camera_views[index] or {}
+        Surface.load_camera(player,surface,st.camera_views[index],true)
+      end
+    end
   end
 end
 

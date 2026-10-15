@@ -21,9 +21,13 @@ function M.facing_sun(point, sun)
   return (a/TAU)%1
 end
 
-local function orientation(node,point,sun,clock)
-  if node.tidal_lock~=false then return M.facing_sun(point,sun) end
-  return node.spin>0 and (clock/node.spin)%1 or 0
+local function orientation(node,point,sun,clock,override)
+  override=override or {}
+  local tidal=override.tidal_lock
+  if tidal==nil then tidal=node.tidal_lock end
+  if tidal~=false then return M.facing_sun(point,sun) end
+  local direction=override.spin_direction or node.spin_direction or 1
+  return node.spin>0 and (direction*clock/node.spin)%1 or 0
 end
 
 function M.order(nodes)
@@ -47,14 +51,19 @@ function M.order(nodes)
   return result, parents
 end
 
-function M.positions(cat, clock, order, parents)
+function M.positions(cat, clock, order, parents, overrides)
   if not order then order, parents = M.order(cat.nodes) end
   local result = {}
   for _, name in ipairs(order) do
     local node = cat.nodes[name]
+    local override=overrides and overrides[name] or {}
     local parent = result[parents[name]] or {x=0,y=0}
-    local a = (node.phase + (node.period > 0 and clock / node.period or 0)) * TAU
-    result[name] = {x=parent.x + node.radius * math.sin(a), y=parent.y - node.radius * math.cos(a)}
+    local phase=override.phase or node.phase
+    local period=override.period or node.period
+    local radius=override.radius or node.radius
+    local direction=override.orbit_direction or node.orbit_direction or 1
+    local a = (phase + (period > 0 and direction*clock/period or 0)) * TAU
+    result[name] = {x=parent.x + radius * math.sin(a), y=parent.y - radius * math.cos(a)}
   end
   return result
 end
@@ -80,7 +89,8 @@ function M.create(surface, cat, st, order, parents, pos)
       st.entities[name] = ent
       st.visual_positions[name]={x=pos[name].x,y=pos[name].y}
       if node.sprite then
-        local angle=orientation(node,pos[name],pos.star,st.clock)
+        local angle=orientation(node,pos[name],pos.star,st.clock,
+          st.orbit_overrides and st.orbit_overrides[name])
         st.sprites[name] = rendering.draw_sprite{
           sprite=node.sprite, target=pos[name], surface=surface,
           orientation=angle
@@ -99,7 +109,10 @@ function M.create(surface, cat, st, order, parents, pos)
         local parent = st.entities[parents[name]]
         if parent then
           st.orbits[name] = rendering.draw_circle{
-            color=node.color, radius=node.radius, width=parents[name]=="star" and 4 or 2,
+            color=node.color,
+            radius=(st.orbit_overrides and st.orbit_overrides[name] and
+              st.orbit_overrides[name].radius) or node.radius,
+            width=parents[name]=="star" and 4 or 2,
             filled=false, target=pos[parents[name]], surface=surface, draw_on_ground=true
           }.id
           st.orbit_centers[name]={x=pos[parents[name]].x,y=pos[parents[name]].y}
@@ -130,7 +143,8 @@ function M.update(cat, st, pos, active)
       end
       local obj=st.sprites[name] and rendering.get_object_by_id(st.sprites[name])
       if obj then
-        local angle=orientation(cat.nodes[name],point,pos.star,st.clock)
+        local angle=orientation(cat.nodes[name],point,pos.star,st.clock,
+          st.orbit_overrides and st.orbit_overrides[name])
         local previous=st.visual_orientations[name]
         if not previous or math.abs((angle-previous+0.5)%1-0.5)>
            (active and 1e-9 or 1/4096) then

@@ -3,6 +3,7 @@ local Surface = require("scripts.surface")
 local Planets = require("scripts.planets")
 local Platforms = require("scripts.platforms")
 local Cards = require("scripts.cards")
+local Custom = require("scripts.custom")
 local M = {}
 
 -- Rebuild only our entities and renders; keeps the same surface and chunks.
@@ -22,7 +23,7 @@ function M.rebuild()
   st.clock = st.clock or game.tick
   local order, parents = Planets.order(cat.nodes)
   st.order, st.parents = order, parents
-  local pos = Planets.positions(cat, st.clock, order, parents)
+  local pos = Planets.positions(cat, st.clock, order, parents, st.orbit_overrides)
   -- Match the original project's full generation BEFORE placing the sun,
   -- bodies or platforms. Otherwise create_entity can silently return nil in
   -- still-ungenerated chunks, leaving the star and ships missing.
@@ -33,6 +34,7 @@ function M.rebuild()
   Planets.create(surface, cat, st, order, parents, pos)
   Platforms.update(surface,cat,st)
   Cards.restore()
+  Custom.redraw(surface)
   for _, force in pairs(game.forces) do
     if force.valid ~= false then M.chart_force(force) end
   end
@@ -191,7 +193,7 @@ function M.tick(event)
   if event.tick%180==0 then Surface.chart_surface_as_radar(surface,true) end
   local interval = active and (cat.update_ticks_active or 1) or cat.update_ticks
   if event.tick % math.max(1,interval) ~= 0 then return end
-  local pos = Planets.positions(cat, st.clock, st.order, st.parents)
+  local pos = Planets.positions(cat, st.clock, st.order, st.parents, st.orbit_overrides)
   for _, point in pairs(pos) do
     local cx, cy = math.floor(point.x/32), math.floor(point.y/32)
     if not surface.is_chunk_generated{x=cx,y=cy} then
