@@ -1,0 +1,12 @@
+{
+  "name": "dynamic-starmap",
+  "version": "0.17.2",
+  "title": "Dynamic Starmap Surface",
+  "author": "ArkadiPorovozov, Arena Agent",
+  "factorio_version": "2.1",
+  "dependencies": [
+    "base >= 2.1.21",
+    "space-age >= 2.1.21",
+    "? PlanetsLib"
+  ]
+}
