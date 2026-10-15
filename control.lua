@@ -2,6 +2,8 @@ local State = require("scripts.state")
 local Surface = require("scripts.surface")
 local Map = require("scripts.map")
 local Gui = require("scripts.gui")
+local Clicks = require("scripts.clicks")
+_G.DSM_GUI = Gui
 local Cards = require("scripts.cards")
 
 -- Full regeneration is destructive, but only for our own dedicated surface.
@@ -19,7 +21,8 @@ local function restore()
   return Map.restore()
 end
 
-script.on_init(function() State.get() end)
+
+script.on_init(function() State.get(); Map.restore() end)
 script.on_configuration_changed(function()
   Gui.close_all()
   -- 0.17 removed the pause button. Old saves may still be paused or have a
@@ -38,6 +41,7 @@ script.on_event(defines.events.on_research_finished, function(event)
   Cards.refresh_force(event.research.force)
 end)
 script.on_event(defines.events.on_tick, function(event)
+  if not game.surfaces[Surface.NAME] then Map.restore() end
   Gui.snap_pending()
   Map.tick(event)
   Gui.tick(event)
@@ -46,15 +50,15 @@ script.on_event("dsm-toggle-cards",function(event)
   Cards.toggle(game.get_player(event.player_index))
 end)
 script.on_event("dsm-remote-target", function(event)
-  Gui.open_selected_target(game.get_player(event.player_index),event)
+  Clicks.open_selected_target(game.get_player(event.player_index),event)
 end)
 script.on_event("dsm-focus-target", function(event)
-  Gui.focus_selected_target(game.get_player(event.player_index),event)
+  Clicks.focus_selected_target(game.get_player(event.player_index),event)
 end)
 script.on_event("dsm-toggle", function(event)
   Gui.toggle(game.get_player(event.player_index))
 end)
-script.on_event(defines.events.on_gui_click, Gui.on_click)
+script.on_event(defines.events.on_gui_click, Clicks.on_click)
 pcall(function()
   script.on_event(defines.events.on_gui_hover, Gui.on_button_hover)
 end)
@@ -69,7 +73,6 @@ script.on_event(defines.events.on_player_removed, function(event)
   Cards.forget(event.player_index)
   State.get().viewers[event.player_index] = nil
   if State.get().camera_views then
-    Surface.release_camera(State.get().camera_views[event.player_index])
     State.get().camera_views[event.player_index]=nil
   end
 end)
@@ -135,4 +138,6 @@ commands.add_command("dsm-hover-debug", {"dsm.hover-debug-help"}, function(comma
   log(text)
 end)
 
+script.on_load(function()
+end)
 remote.add_interface("dynamic_starmap",require("scripts.public"))

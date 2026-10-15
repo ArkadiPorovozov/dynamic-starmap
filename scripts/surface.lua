@@ -78,21 +78,6 @@ function M.chart_surface_as_radar(surface, generate)
   end
 end
 
--- Obsolete radar references from saves made by 0.16.8-0.17.0; the prototype
--- has been removed, but explicitly destroy any valid leftovers as well.
-function M.release_camera(state)
-  local radar=state and state.radar
-  if radar and radar.valid then radar.destroy() end
-  if state then state.radar=nil end
-end
-
-function M.release_coverage(st)
-  for _,radar in pairs(st.coverage_radars or {}) do
-    if radar.valid then radar.destroy() end
-  end
-  st.coverage_radars=nil
-end
-
 -- The old project charts the whole finite map every 180 ticks. Camera
 -- charting is an additional bounded fallback for modded systems beyond it.
 function M.load_camera(player,surface,state,force)

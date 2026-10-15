@@ -32,12 +32,25 @@ function M.clear(st)
   st.platform_marks={}
 end
 
+local function same_entity(a,b)
+  if a==b then return true end
+  if not (a and b and a.valid and b.valid) then return false end
+  local ok,eq=pcall(function()
+    return a.unit_number~=nil and b.unit_number~=nil and
+      a.unit_number==b.unit_number
+  end)
+  if ok and eq then return true end
+  -- Fallback for wrappers that do not compare by unit_number.
+  return a.name==b.name and a.surface==b.surface and
+    a.position.x==b.position.x and a.position.y==b.position.y
+end
+
 function M.find(st,entity)
   if not (entity and entity.valid and
     (entity.name=="dsm-platform-parked-marker" or
      entity.name=="dsm-platform-moving-marker")) then return nil end
   for _,mark in pairs(st.platform_marks or {}) do
-    if mark.entity == entity then
+    if same_entity(mark.entity,entity) then
       local force=game.forces[mark.force]
       local platform=force and force.platforms[mark.index]
       if platform and platform.valid then return platform,mark end

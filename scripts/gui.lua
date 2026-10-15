@@ -4,6 +4,7 @@ local Map = require("scripts.map")
 local Platforms = require("scripts.platforms")
 local Cards = require("scripts.cards")
 local Conditions = require("scripts.conditions")
+local Clicks = require("scripts.clicks")
 -- Remove screen overlays from saves made by 0.15–0.16.3. They intercept
 -- mouse selection and must not sit over the restored native world entities.
 local PB_PREFIX = "dsm-pbtn-"
@@ -20,6 +21,27 @@ local function clear_old_hits(player)
   for _,child in ipairs(stale) do if child.valid then child.destroy() end end
 end
 local M = {}
+
+local TOP_BUTTON = "dsm-top-starmap"
+function M.ensure_top_button(player)
+  if not (player and player.valid) then return end
+  local btn = player.gui.top[TOP_BUTTON]
+  if btn and btn.valid then return btn end
+  btn = player.gui.top.add{
+    type = "button",
+    name = TOP_BUTTON,
+    caption = {"dsm.open-starmap"},
+    tooltip = {"dsm.open-starmap"},
+    style = "tool_button"
+  }
+  return btn
+end
+
+function M.remove_top_button(player)
+  if not (player and player.valid) then return end
+  local btn = player.gui.top[TOP_BUTTON]
+  if btn and btn.valid then btn.destroy() end
+end
 local GUI, DETAILS, PLATFORM, HOVER = "dsm-panel", "dsm-details", "dsm-platform", "dsm-hover-conditions"
 
 local function destroy_gui(player)
@@ -282,7 +304,12 @@ local function update_planet_buttons(player,st,view)
         if not okb then created=nil end
         btn=created
         view.pbuttons[name]=btn
-        if btn then
+        if btn and btn.valid then
+          pcall(function() btn.tags={node=name} end)
+          pcall(function() btn.ignored_by_interaction=false end)
+          pcall(function() btn.enabled=true end)
+          pcall(function() btn.mouse_button_filter={"left"} end)
+          pcall(function() btn.visible=true end)
           pcall(function() btn.style.padding=0 end)
         end
       end
@@ -372,278 +399,15 @@ local function unlocked(player,name)
   return not ok or result~=false
 end
 
--- Leave the map WITHOUT restoring the pre-map controller. The old path
--- (M.close -> character -> remote) could silently land back on the home
--- surface in the real client; a direct remote->remote switch is atomic.
-local function leave_map_without_restore(player)
-  local st=State.get()
-  local old=st.viewers[player.index]
-  if not old then return false end
-  old.hover_name,old.probe_name=nil,nil
-  Cards.hide(player)
-  destroy_gui(player)
-  st.viewers[player.index]=nil
-  if st.camera_views then
-    Surface.release_camera(st.camera_views[player.index])
-    st.camera_views[player.index]=nil
-  end
-  return true
-end
-
-local function planet_surface(name)
-  local planet=game.planets and game.planets[name]
-  local surf=planet and planet.surface
-  if surf and surf.valid then return surf end
-  surf=game.surfaces and game.surfaces[name]
-  if surf and surf.valid then return surf end
-  if planet then
-    -- Как в custom-starmap: сначала вызов через точку lp.create_surface(),
-    -- затем на всякий случай через двоеточие.
-    local ok,res=pcall(function() return planet.create_surface() end)
-    if ok and res and res.valid then return res end
-    local ok2,res2=pcall(function() return planet:create_surface() end)
-    if ok2 and res2 and res2.valid then return res2 end
-    surf=planet.surface
-    if surf and surf.valid then return surf end
-  end
-  return game.surfaces and game.surfaces[name] or nil
-end
-
-local function open_remote_target(player,entity,opts)
-  local st=State.get()
-  if not (player and player.valid) or not entity or not entity.valid then return false end
-  if not st.viewers[player.index] then return false end
-  local surf,platform,target_label
-  if entity.name=="dsm-platform-parked-marker" or
-     entity.name=="dsm-platform-moving-marker" then
-    platform=Platforms.find(st,entity)
-    if not (platform and platform.force==player.force) then
-      log("[dynamic-starmap] LMB remote target: platform not owned by player force")
-      return false
-    end
-    surf=platform.surface
-    target_label=platform.name
-  else
-    local name=entity.name:match("^dsm%-node%-(.+)$")
-    if not name or name=="star" then
-      log("[dynamic-starmap] LMB remote target rejected: name="..tostring(name))
-      return false
-    end
-    -- An explicit LMB click is the user asking to go there: do not let the
-    -- discovery gate silently swallow it (RMB keeps the old behaviour).
-    if not (opts and opts.allow_locked) and not unlocked(player,name) then
-      log("[dynamic-starmap] LMB remote target rejected: locked "..name)
-      return false
-    end
-    surf=planet_surface(name)
-    target_label=name
-  end
-  if not (surf and surf.valid) then
-    log("[dynamic-starmap] LMB remote target: no surface for "..tostring(entity.name))
-    if player.valid then player.print({"dsm.no-surface"}) end
-    return false
-  end
-  local hub=platform and platform.hub
-  local center=hub and hub.valid and hub.position or {x=0,y=0}
-  -- Detach from the map first (viewer entry removed) so the
-  -- on_player_controller_changed handler cannot bounce us back, then
-  -- switch the remote controller straight onto the target surface.
-  leave_map_without_restore(player)
-  local ok,err=pcall(function()
-    player.force.chart(surf,{{center.x-64,center.y-64},{center.x+64,center.y+64}})
-    player.set_controller{type=defines.controllers.remote,surface=surf,position=center}
-  end)
-  if not ok then
-    log("[dynamic-starmap] LMB teleport failed: "..tostring(err))
-    if player.valid then player.print({"dsm.no-surface"}) end
-    return false
-  end
-  -- Как в custom-starmap: подтверждаем переход в чат, чтобы было видно,
-  -- что обработчик клика сработал и куда ушёл просмотр.
-  if player.valid then
-    player.print("[dynamic-starmap] Remote View → "..tostring(target_label or surf.name))
-  end
-  return true
-end
-
--- Тождество сущностей без опоры на == обёрток LuaEntity: сначала прямое
--- равенство, затем unit_number (в клиенте обёртки одной сущности могут
--- не сравниваться через ==, из-за чего раньше падал поиск цели).
-local function same_entity(a,b)
-  if a==b then return true end
-  if not (a and b) then return false end
-  local ok,eq=pcall(function()
-    return a.unit_number~=nil and b.unit_number~=nil and
-      a.unit_number==b.unit_number
-  end)
-  return ok and eq or false
-end
-
-local function owned_target(st,player,entity)
-  if not (entity and entity.valid) then return false end
-  if entity.surface and player.surface and
-     entity.surface.index~=player.surface.index then return false end
-  local name=entity.name:match("^dsm%-node%-(.+)$")
-  if name then
-    local stored=st.entities[name]
-    return stored~=nil and same_entity(stored,entity)
-  end
-  local platform=Platforms.find(st,entity)
-  return platform and platform.force==player.force or false
-end
-
--- Цель клика определяется КАК В custom-starmap (handle_planet_click):
--- не по selection_box (в клиенте он не совпал с ожидаемым), а по расстоянию
--- от точки клика до позиции тела с радиусом захвата = радиус иконки + запас.
-local function capture_radius(ent)
-  local name=ent.name:match("^dsm%-node%-(.+)$")
-  local node=name and State.catalog().nodes[name]
-  -- Запас щедрый: по логу клика клик в 0.81 тайла от центра тела с
-  -- визуальным радиусом ~0.3 не должен считаться промахом. Минимум 2 тайла,
-  -- чтобы по маленьким лунам/планетам можно было реально попасть мышью.
-  if node and node.size then return math.max(node.size/2+1.5,2) end
-  return 2 -- маркеры платформ
-end
-
-local function map_target(player,event)
-  local st=State.get()
-  if not (player and player.valid and st.viewers[player.index] and
-          player.surface and player.surface.name==Surface.NAME) then return nil end
-  if event and ((event.element and event.element.valid) or event.in_gui) then return nil end
-  -- Как в оригинале: нет курсора события — берём позицию игрока (камеры).
-  local point=(event and event.cursor_position) or player.position
-  if not point then return nil end
-  local cx,cy=point.x or point[1],point.y or point[2]
-  if not (cx and cy) then return nil end
-  local function hit(ent)
-    if not (ent and ent.valid) then return nil end
-    local name=ent.name:match("^dsm%-node%-(.+)$")
-    -- Сущность может отставать от визуальной позиции (чанк не сгенерирован),
-    -- поэтому дистанция считается до ближайшей из двух позиций.
-    local d=math.huge
-    local p2=name and st.positions and st.positions[name]
-    for _,p in ipairs({ent.position,p2}) do
-      if p then
-        local dx,dy=p.x-cx,p.y-cy
-        local dd=math.sqrt(dx*dx+dy*dy)
-        if dd<d then d=dd end
-      end
-    end
-    local capture=capture_radius(ent)
-    if d<=capture then return d-capture end
-    return nil
-  end
-  -- 1) фактически выделенная сущность, если клик попал в её радиус захвата
-  local selected=player.selected
-  if selected and selected.valid and owned_target(st,player,selected) and hit(selected) then
-    return selected
-  end
-  -- 2) платформы имеют приоритет (как в оригинале: слоты проверяются первыми)
-  local best,best_score
-  for _,mark in pairs(st.platform_marks or {}) do
-    if mark.force==player.force.name and mark.entity and mark.entity.valid then
-      local score=hit(mark.entity)
-      if score and (not best_score or score<best_score) then
-        best,best_score=mark.entity,score
-      end
-    end
-  end
-  if best then return best end
-  -- 3) планеты/луны/локации: ближайшая по score = дистанция - радиус захвата
-  for _,ent in pairs(st.entities) do
-    if ent.valid and owned_target(st,player,ent) then
-      local score=hit(ent)
-      if score and (not best_score or score<best_score) then
-        best,best_score=ent,score
-      end
-    end
-  end
-  return best
-end
-
-function M.open_selected_target(player,event)
-  return open_remote_target(player,map_target(player,event))
-end
-
-function M.focus_selected_target(player,event)
-  local ent=map_target(player,event)
-  local view=player and State.get().viewers[player.index]
-  local st=State.get()
-  local tick=event and event.tick or game.tick
-  if not (ent and ent.valid) and view and view.probe_name and
-     view.probe_tick and tick-view.probe_tick<=30 then
-    local probe=st.entities and st.entities[view.probe_name]
-    if probe and probe.valid then ent=probe end
-  end
-  if not (ent and ent.valid) then
-    -- курсор/хитбоксы не нашли цель (например, selection_box в клиенте
-    -- отличается от расчётной): доверяем фактически выделенной сущности,
-    -- если точка клика рядом с ней.
-    local sel=player and player.selected
-    if sel and sel.valid and owned_target(st,player,sel) then
-      local p=event and event.cursor_position
-      if not p then
-        ent=sel
-      else
-        local node_name=sel.name:match("^dsm%-node%-(.+)$")
-        local node=node_name and State.catalog().nodes[node_name]
-        local reach=(node and node.size or 1)/2+1.5
-        local dx,dy=sel.position.x-(p.x or p[1]),sel.position.y-(p.y or p[2])
-        if dx*dx+dy*dy<=reach*reach then ent=sel end
-      end
-    end
-  end
-  if view then
-    local p=event and event.cursor_position
-    view.last_lmb_target=ent and ent.name or "-"
-    view.last_lmb_tick=tick
-    view.last_lmb_position=p and {x=p.x or p[1],y=p.y or p[2]} or nil
-  end
-  if not (ent and ent.valid) then
-    -- Диагностика одним заходом: что пришло в событии, где камера и как
-    -- далеко ближайшая сущность карты от точки клика.
-    local cp=event and event.cursor_position
-    local px,py
-    if cp then px,py=cp.x or cp[1],cp.y or cp[2]
-    elseif player then px,py=player.position.x,player.position.y end
-    local nearest,ndist,ncap="-",-1,0
-    if px and py then
-      for name2,e2 in pairs(st.entities or {}) do
-        if e2 and e2.valid then
-          local dx,dy=e2.position.x-px,e2.position.y-py
-          local d=math.sqrt(dx*dx+dy*dy)
-          if ndist<0 or d<ndist then nearest,ndist,ncap=name2,d,capture_radius(e2) end
-        end
-      end
-    end
-    log("[dynamic-starmap] LMB: no map target (selected="..
-      tostring(player and player.selected and player.selected.name or "-")..
-      ", cursor="..(cp and (tostring(px)..","..tostring(py)) or "nil")..
-      ", probe="..tostring(view and view.probe_name or "-")..
-      ", nearest="..nearest.."@"..string.format("%.2f",ndist)..
-      " capture="..string.format("%.2f",ncap)..")")
-    return false
-  end
-  -- ЛКМ по планете/платформе: перекинуть удалённый просмотр на реальную
-  -- поверхность этого тела/платформы (как ПКМ), а не только сдвинуть камеру.
-  -- Remote View can raise a mouse-button-1 custom input both on press and
-  -- on the synthetic click after release. Avoid teleporting twice.
-  if view and view.click_entity==ent and view.click_tick and
-     tick>=view.click_tick and tick-view.click_tick<=8 then return true end
-  if view then view.click_entity,view.click_tick=ent,tick end
-  return open_remote_target(player,ent,{allow_locked=true})
-end
-
-function M.close(player)
+function M.close(player, keep_gui)
   local st = State.get()
   local old = st.viewers[player.index]
   if not old then return false end
   old.hover_name,old.probe_name=nil,nil
   Cards.hide(player)
-  destroy_gui(player)
+  if not keep_gui then destroy_gui(player) end
   st.viewers[player.index] = nil
   if st.camera_views then
-    Surface.release_camera(st.camera_views[player.index])
     st.camera_views[player.index]=nil
   end
   if old.type == defines.controllers.character and old.character and old.character.valid then
@@ -762,35 +526,6 @@ function M.toggle(player)
   if State.get().viewers[player.index] then M.close(player) else M.open(player) end
 end
 
-function M.on_click(event)
-  local element = event.element
-  if not (element and element.valid) then return end
-  local player = game.get_player(event.player_index)
-  if not (player and State.get().viewers[player.index]) then return end
-  -- Кнопка планеты: цель известна из tags, событие on_gui_click надёжно.
-  if element.name and element.name:sub(1,#PB_PREFIX)==PB_PREFIX then
-    local name=element.tags and element.tags.node
-    local ent=name and State.get().entities[name]
-    if ent and ent.valid then
-      open_remote_target(player,ent,{allow_locked=true})
-    else
-      log("[dynamic-starmap] planet button click without entity: "..tostring(name))
-    end
-    return
-  end
-  if element.name == "dsm-platform-view" then
-    local mark=player.selected
-    if not (mark and mark.valid and (mark.name=="dsm-platform-parked-marker" or
-      mark.name=="dsm-platform-moving-marker")) then
-      for _,record in pairs(State.get().platform_marks or {}) do
-        if element.parent.tags and element.parent.tags.key==record.force..":"..record.index then
-          mark=record.entity;break
-        end
-      end
-    end
-    open_remote_target(player,mark)
-  end
-end
 
 -- Наведение на кнопку планеты: показываем карточку и обновляем пробник,
 -- как это делало наведение на мировую сущность.
@@ -810,15 +545,35 @@ end
 
 function M.on_selected(event)
   local player = game.get_player(event.player_index)
-  if not (player and State.get().viewers[player.index]) then return end
+  local st=State.get()
+  if not (player and st.viewers[player.index]) then return end
   local ent = player.selected
-  local platform,mark=Platforms.find(State.get(),ent)
+  local platform,mark=Platforms.find(st,ent)
   if platform and platform.force==player.force then
     local hover=player.gui.screen[HOVER];if hover then hover.destroy() end
-    State.get().viewers[player.index].hover_name=nil
+    st.viewers[player.index].hover_name=nil
     local details=player.gui.screen[DETAILS];if details then details.destroy() end
     show_platform(player,platform,mark)
+    local view=st.viewers[player.index]
+    if ent and ent.valid and (not view.last_selected_teleport or
+        view.last_selected_teleport~=ent.unit_number or
+        (event.tick or game.tick)-(view.last_selected_tick or 0)>10) then
+      view.last_selected_teleport=ent.unit_number
+      view.last_selected_tick=event.tick or game.tick
+      Clicks.open_remote_target(player,ent,{allow_locked=true})
+    end
     return
+  end
+  local name = ent and ent.valid and ent.name:match("^dsm%-node%-(.+)$")
+  if name and st.entities[name] and Clicks.owned_target(st,player,ent) then
+    local view=st.viewers[player.index]
+    if not view.last_selected_teleport or view.last_selected_teleport~=ent.unit_number or
+       (event.tick or game.tick)-(view.last_selected_tick or 0)>10 then
+      view.last_selected_teleport=ent.unit_number
+      view.last_selected_tick=event.tick or game.tick
+      Clicks.open_remote_target(player,ent,{allow_locked=true})
+      return
+    end
   end
   local preview=player.gui.screen[PLATFORM];if preview then preview.destroy() end
   local name = ent and ent.valid and ent.name:match("^dsm%-node%-(.+)$")
@@ -875,10 +630,10 @@ function M.tick(event)
         selected=st.entities[name]
       end
       if name and selected and selected.valid and
-         same_entity(st.entities[name],selected) then
+         Clicks.same_entity(st.entities[name],selected) then
         if view.hover_name~=name or not player.gui.screen[HOVER] then show_hover(player,name) end
         view.hover_name,view.hover_tick=name,event.tick
-        if same_entity(player.selected,selected) then view.probe_name,view.probe_tick=name,event.tick end
+        if Clicks.same_entity(player.selected,selected) then view.probe_name,view.probe_tick=name,event.tick end
         local frame=player.gui.screen[HOVER]
         local p=st.positions and st.positions[name]
         if frame and frame.valid and p then place_hover(player,frame,p) end
@@ -899,8 +654,7 @@ function M.close_all()
   for _, index in ipairs(indices) do
     local player = game.get_player(index)
     if player and player.valid then M.close(player) else
-      Surface.release_camera(st.camera_views and st.camera_views[index])
-      if st.camera_views then st.camera_views[index]=nil end
+        if st.camera_views then st.camera_views[index]=nil end
       st.viewers[index] = nil
     end
   end
@@ -910,4 +664,5 @@ function M.close_all()
   end
 end
 
+State.Gui = M
 return M

@@ -11,15 +11,12 @@ function M.rebuild()
   local cat, st = State.catalog(), State.get()
   assert(not st.pending_rebuild_surface, "starmap surface is being cleared")
   local surface = Surface.get()
-  Surface.release_coverage(st)
   Platforms.clear(st)
   rendering.clear("dynamic-starmap")
   for _, ent in pairs(st.entities) do if ent.valid then ent.destroy() end end
   st.entities, st.sprites, st.rings, st.labels, st.orbits, st.cards = {}, {}, {}, {}, {}, {}
-  for _,view in pairs(st.camera_views or {}) do Surface.release_camera(view) end
   st.camera_views={}
   -- Old saves can contain cached route geometry; nothing renders it anymore.
-  st.route_lines, st.route_side, st.route_paths = nil, nil, nil
   st.clock = st.clock or game.tick
   local order, parents = Planets.order(cat.nodes)
   st.order, st.parents = order, parents
@@ -101,13 +98,11 @@ function M.regenerate(caller_index)
   local st = State.get()
   local surface = game.surfaces[Surface.NAME]
   Platforms.clear(st)
-  for _,view in pairs(st.camera_views or {}) do Surface.release_camera(view) end
   st.camera_views={}
-  Surface.release_coverage(st)
   rendering.clear("dynamic-starmap")
   st.entities,st.sprites,st.rings,st.labels,st.orbits,st.positions={}, {}, {}, {}, {}, {}
   st.platform_marks={}
-  st.route_lines,st.route_side,st.route_paths,st.order,st.parents=nil,nil,nil,nil,nil
+  st.order,st.parents=nil,nil
   st.clock,st.paused,st.time_scale,st.map_version=0,false,nil,nil
   st.last_rebuild_error=nil
   if not surface then return true, M.rebuild() end
@@ -184,7 +179,6 @@ function M.tick(event)
       st.camera_views[player.index]=camera
       Surface.load_camera(player,surface,camera,false)
     elseif player.index then
-      Surface.release_camera(st.camera_views[player.index])
       st.camera_views[player.index]=nil
     end
   end
