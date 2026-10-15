@@ -63,11 +63,11 @@ data:extend({
   },
   {
     type = "custom-input", name = "dsm-focus-target", key_sequence = "mouse-button-1",
-    consuming = "none", include_selected_prototype = true
+    consuming = "none", include_selected_prototype = true, action = "lua"
   },
   {
     type = "custom-input", name = "dsm-remote-target", key_sequence = "mouse-button-2",
-    consuming = "none", include_selected_prototype = true
+    consuming = "none", include_selected_prototype = true, action = "lua"
   },
   {
     type = "custom-input", name = "dsm-toggle", key_sequence = "SHIFT + M",
