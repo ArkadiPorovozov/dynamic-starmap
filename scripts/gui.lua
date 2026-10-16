@@ -110,6 +110,24 @@ local function show_details(player, name)
   if not surface_props["day-night-cycle"] and planet and planet.surface then
     line({"dsm.day-cycle", math.floor(planet.surface.ticks_per_day/360+0.5)/10}, true)
   end
+
+  -- Extra orbital info requested for planets.
+  local st = State.get()
+  local pos = st.positions and st.positions[name]
+  if pos then
+    line({"dsm.coordinates", pos.x, pos.y}, true)
+    local dist = math.sqrt(pos.x * pos.x + pos.y * pos.y)
+    line({"dsm.distance", dist}, true)
+  end
+  local orient = st.visual_orientations and st.visual_orientations[name]
+  if orient ~= nil then
+    line({"dsm.rotation", orient * 360}, true)
+  end
+  local connectors = 0
+  for _, conn in pairs(prototypes.space_connection or {}) do
+    if conn.from == name or conn.to == name then connectors = connectors + 1 end
+  end
+  line({"dsm.connectors", connectors}, true)
   local contents, seen = {}, {}
   for _, resource in ipairs(node.contents or {}) do
     contents[#contents+1], seen[resource] = resource, true

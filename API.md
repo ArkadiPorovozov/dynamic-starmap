@@ -41,7 +41,7 @@ Map:configure{stars=120, moon_scale=0.65, update_ticks_active=1}
 | `Map:hide(name)`, `Map:show(name)` | Скрыть/вернуть тело карты (не изменяет прототип Space Age). Солнце скрыть нельзя. |
 | `Map:configure(settings)` | Общие параметры карты: `stars`, `orbit_gap`, `moon_scale`, `body_size_multiplier`, `orbit_color`, `planet_angular_speed`, `moon_angular_speed`, `time_scale`, `show_platforms`, `static_planet_entities` и др. |
 
-Параметры узла: `parent`, `radius` (тайлы; заданный явно радиус не получает автоматическую прибавку +5), `phase` (начальная доля оборота, 0 = вверх), `period` (тики одного оборота, 0 = неподвижно), `orbit_direction` (`1` по часовой, `-1` против), `tidal_lock` (по умолчанию `true`, одна сторона повернута к Солнцу), `spin` (тики собственного оборота) и `spin_direction` (`1` или `-1`; действует при `tidal_lock=false`), `size`, `icon`, `icon_size`, `localised_name`, `description`, `contents`, `properties`, `draw_orbit`, `color`, `static_picture`, `hidden`. При приливной синхронизации `spin_direction` не меняет ориентацию картинки: она всегда смотрит на Солнце. Прототип для Солнца остаётся **картинкой entity**.
+Любое поле узла можно переопределить через `Map:update`/`Map:extend`; незаданные поля используют ванильное значение. Параметры узла: `parent`, `radius` (тайлы; заданный явно радиус не получает автоматическую прибавку +5), `phase` (начальная доля оборота, 0 = вверх), `period` (тики одного оборота, 0 = неподвижно), `orbit_direction` (`1` по часовой, `-1` против), `tidal_lock` (по умолчанию `true`, одна сторона повернута к Солнцу), `spin` (тики собственного оборота) и `spin_direction` (`1` или `-1`; действует при `tidal_lock=false`), `size`, `icon`, `icon_size`, `localised_name`, `description`, `contents`, `properties`, `draw_orbit`, `color`, `static_picture`, `hidden`. При приливной синхронизации `spin_direction` не меняет ориентацию картинки: она всегда смотрит на Солнце. Прототип для Солнца остаётся **картинкой entity**.
 
 Смена орбитального направления не перемещает планету в начальный момент (`clock=0`), а меняет знак последующего движения. Для лун знак применяется относительно родителя.
 
@@ -64,6 +64,8 @@ Map:configure{stars=120, moon_scale=0.65, update_ticks_active=1}
 | `focus_platform(player_index,force_index,platform_index)` | Перевести камеру к значку существующей платформы своей силы. |
 | `set_paused(bool)`, `set_time_scale(number)` | Пауза и множитель скорости `0..100`. |
 | `set_orbit(name,{radius=?,phase=?,period=?,orbit_direction=?,spin_direction=?,tidal_lock=?})` | Сохранить runtime-переопределение орбиты, пересобрать визуальные объекты на той же поверхности. Направления — строго `1` или `-1`; звезда недоступна. |
+| `set_node(name,changes)` | Переопределить **любые** поля узла каталога во время игры (sprite, size, contents, properties, color и т.д.). Незаданные поля сохраняют ванильное/вычисленное значение. Пересобирает карту. |
+| `reset_node(name)` | Удалить runtime-переопределение узла, вернуть data-stage значения. |
 | `reset_orbit(name)` | Удалить runtime-переопределение, вернуть data-stage значения. |
 | `rechart(force_name)` | Повторно открыть центральную область выбранной силе. |
 | `rebuild()` | Пересобрать объекты без очистки чанков. Возвращает поверхность или `false`, если идёт очистка. |

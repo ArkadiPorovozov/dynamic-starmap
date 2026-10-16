@@ -159,6 +159,27 @@ function M.reset_orbit(name)
   return true
 end
 
+function M.set_node(name, changes)
+  assert(type(name)=="string" and State.catalog().nodes[name], "unknown node")
+  assert(type(changes)=="table", "changes table required")
+  local st = State.get()
+  st.node_overrides = st.node_overrides or {}
+  local override = State.copy(st.node_overrides[name] or {})
+  for key, value in pairs(changes) do
+    if value == nil then override[key] = nil else override[key] = State.copy(value) end
+  end
+  st.node_overrides[name] = override
+  if game.surfaces[Surface.NAME] then Map.rebuild() end
+  return true
+end
+function M.reset_node(name)
+  local st = State.get()
+  if not (st.node_overrides and st.node_overrides[name]) then return false end
+  st.node_overrides[name] = nil
+  if game.surfaces[Surface.NAME] then Map.rebuild() end
+  return true
+end
+
 M.set_annotation=Custom.set
 M.remove_annotation=Custom.remove
 M.get_annotations=Custom.list

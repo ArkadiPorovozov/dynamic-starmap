@@ -388,6 +388,15 @@ for name, proto in pairs(all) do
       color = cfg.orbit_color or change.color or (is_moon and
         {r=0.46,g=0.56,b=0.68,a=0.9} or {r=0.32,g=0.38,b=0.48,a=0.88})
     }
+    -- Generic override: any field present in cfg.nodes[name] wins over the
+    -- computed/vanilla value, so mods can change absolutely anything without
+    -- editing this file. Fields not provided keep their vanilla/computed value.
+    for key, value in pairs(change) do
+      if value ~= nil then
+        nodes[name][key] = table.deepcopy(value)
+      end
+    end
+    if change.contents ~= nil then nodes[name].contents_custom = true end
     assert(nodes[name].orbit_direction==1 or nodes[name].orbit_direction==-1,
       "orbit_direction must be 1 (clockwise) or -1 (counterclockwise): "..name)
     assert(nodes[name].spin_direction==1 or nodes[name].spin_direction==-1,
