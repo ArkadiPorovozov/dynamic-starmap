@@ -3,7 +3,6 @@ local Surface = require("scripts.surface")
 local Map = require("scripts.map")
 local Gui = require("scripts.gui")
 local Clicks = require("scripts.clicks")
-_G.DSM_GUI = Gui
 local Cards = require("scripts.cards")
 
 -- Full regeneration is destructive, but only for our own dedicated surface.

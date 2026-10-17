@@ -169,6 +169,7 @@ function M.set_node(name, changes)
     if value == nil then override[key] = nil else override[key] = State.copy(value) end
   end
   st.node_overrides[name] = override
+  State.invalidate()
   if game.surfaces[Surface.NAME] then Map.rebuild() end
   return true
 end
@@ -176,6 +177,7 @@ function M.reset_node(name)
   local st = State.get()
   if not (st.node_overrides and st.node_overrides[name]) then return false end
   st.node_overrides[name] = nil
+  State.invalidate()
   if game.surfaces[Surface.NAME] then Map.rebuild() end
   return true
 end

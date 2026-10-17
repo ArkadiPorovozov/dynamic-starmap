@@ -297,9 +297,11 @@ local function update_planet_buttons(player,st,view)
       for _,btn in pairs(view.pbuttons) do if btn.valid then btn.destroy() end end
       view.pbuttons=nil
     end
+    view.pbutton_pos=nil
     return
   end
   view.pbuttons=view.pbuttons or {}
+  view.pbutton_pos=view.pbutton_pos or {}
   local res=player.display_resolution or {width=1280,height=720}
   local scale=player.display_scale or 1
   if scale<=0 then scale=1 end
@@ -322,6 +324,7 @@ local function update_planet_buttons(player,st,view)
         if not okb then created=nil end
         btn=created
         view.pbuttons[name]=btn
+        view.pbutton_pos[name]=nil
         if btn and btn.valid then
           pcall(function() btn.tags={node=name} end)
           pcall(function() btn.ignored_by_interaction=false end)
@@ -337,10 +340,17 @@ local function update_planet_buttons(player,st,view)
         local x=res.width/2+(p.x-cam.x)*32*zoom-dia/2
         local y=res.height/2+(p.y-cam.y)*32*zoom-dia/2
         if x<-dia or y<-dia or x>res.width or y>res.height then
-          btn.visible=false
+          if btn.visible then btn.visible=false end
+          view.pbutton_pos[name]=nil
         else
-          btn.visible=true
-          btn.location={x=x,y=y}
+          if not btn.visible then btn.visible=true end
+          -- GUI relayout is the costliest per-tick work; only move the button
+          -- when its physical position actually changed by at least a pixel.
+          local last=view.pbutton_pos[name]
+          if not last or (last.x-x)^2+(last.y-y)^2>1 then
+            btn.location={x=x,y=y}
+            view.pbutton_pos[name]={x=x,y=y}
+          end
           local w=math.max(10,dia/scale)
           if math.abs((btn.style.width or 0)-w)>1 then
             btn.style.width,btn.style.height=w,w
@@ -353,6 +363,7 @@ local function update_planet_buttons(player,st,view)
     if not seen[name] then
       if btn and btn.valid then btn.destroy() end
       view.pbuttons[name]=nil
+      view.pbutton_pos[name]=nil
     end
   end
 end

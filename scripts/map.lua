@@ -157,6 +157,9 @@ end
 
 function M.chunk_generated(event)
   if event.surface.name ~= Surface.NAME then return end
+  -- During the finite central bulk generation the whole area is charted at
+  -- once afterwards (Surface.chart_surface_as_radar); skip per-chunk work.
+  if State.get().bulk_generating then return end
   for _,force in pairs(game.forces) do
     if force.valid ~= false then force.chart(event.surface, event.area) end
   end

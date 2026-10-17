@@ -57,6 +57,7 @@ M.COVERAGE_RADIUS_CHUNKS = math.ceil(M.OLD_MAP_LIMIT / 32) + 1
 
 function M.chart_surface_as_radar(surface, generate)
   if not (surface and surface.valid) then return end
+  local st=State.get()
   if generate then
     local radius=M.COVERAGE_RADIUS_CHUNKS
     local missing=false
@@ -68,7 +69,15 @@ function M.chart_surface_as_radar(surface, generate)
         end
       end
     end
-    if missing then surface.force_generate_chunk_requests() end
+    if missing then
+      -- The whole central area is charted for every force below, so per-chunk
+      -- charting in on_chunk_generated is redundant during this bulk pass and
+      -- only adds work proportional to (chunks * forces). Suppress it here.
+      st.bulk_generating=true
+      local ok=pcall(surface.force_generate_chunk_requests,surface)
+      st.bulk_generating=false
+      if not ok then log("[dynamic-starmap] bulk chunk generation failed") end
+    end
   end
   for _,force in pairs(game.forces) do
     if force.valid~=false then

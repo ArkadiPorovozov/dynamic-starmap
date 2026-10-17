@@ -197,23 +197,7 @@ function M.focus_selected_target(player, event)
     view.last_lmb_tick = tick
     view.last_lmb_position = p and {x = p.x or p[1], y = p.y or p[2]} or nil
   end
-  if not (ent and ent.valid) then
-    local cp = event and event.cursor_position
-    local px, py
-    if cp then px, py = cp.x or cp[1], cp.y or cp[2]
-    elseif player then px, py = player.position.x, player.position.y end
-    local nearest, ndist, ncap = "-", -1, 0
-    if px and py then
-      for name2, e2 in pairs(st.entities or {}) do
-        if e2 and e2.valid then
-          local dx, dy = e2.position.x - px, e2.position.y - py
-          local d = math.sqrt(dx * dx + dy * dy)
-          if ndist < 0 or d < ndist then nearest, ndist, ncap = name2, d, capture_radius(e2) end
-        end
-      end
-    end
-    return false
-  end
+  if not (ent and ent.valid) then return false end
   if view and view.click_entity == ent and view.click_tick and
      tick >= view.click_tick and tick - view.click_tick <= 8 then return true end
   if view then view.click_entity, view.click_tick = ent, tick end
